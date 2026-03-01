@@ -1,5 +1,3 @@
----
-
 # AWS Multi-Region Serverless Assessment
 
 ## Overview
