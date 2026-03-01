@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform Init
+        run: terraform init -upgrade
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -lock=false
+
+  tests:
+    runs-on: ubuntu-latest
+    needs: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd test
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Tests
+        run: |
+          cd test
+          python run_tests.py
+        env:
+          API_URL_PRIMARY: ${{ secrets.API_URL_PRIMARY }}
+          API_URL_SECONDARY: ${{ secrets.API_URL_SECONDARY }}
+          COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+          COGNITO_USERNAME: ${{ secrets.COGNITO_USERNAME }}
+          COGNITO_PASSWORD: ${{ secrets.COGNITO_PASSWORD }}

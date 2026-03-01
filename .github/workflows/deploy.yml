@@ -1,0 +1,75 @@
+name: Deploy-Test-Destroy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+
+    env:
+      TF_VAR_cognito_test_user_password: ${{ secrets.COGNITO_PASSWORD }}
+      TF_VAR_email: srinu.galla@gmail.com
+      TF_VAR_region_primary: us-east-1
+      TF_VAR_region_secondary: eu-west-1
+      TF_VAR_repo_url: https://github.com/srinugalla/aws-assessment
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -upgrade
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Capture Outputs
+        id: outputs
+        working-directory: terraform
+        run: |
+          echo "API_URL_PRIMARY=$(terraform output -raw api_base_url_primary)" >> $GITHUB_ENV
+          echo "API_URL_SECONDARY=$(terraform output -raw api_base_url_secondary)" >> $GITHUB_ENV
+          echo "COGNITO_CLIENT_ID=$(terraform output -raw cognito_user_pool_client_id)" >> $GITHUB_ENV
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          cd test
+          pip install -r requirements.txt
+
+      - name: Run Tests
+        env:
+          API_URL_PRIMARY: ${{ env.API_URL_PRIMARY }}
+          API_URL_SECONDARY: ${{ env.API_URL_SECONDARY }}
+          COGNITO_CLIENT_ID: ${{ env.COGNITO_CLIENT_ID }}
+          COGNITO_USERNAME: srinu.galla@gmail.com
+          COGNITO_PASSWORD: ${{ secrets.COGNITO_PASSWORD }}
+        run: |
+          cd test
+          python run_tests.py
+
+      - name: Terraform Destroy
+        if: always()
+        working-directory: terraform
+        run: terraform destroy -auto-approve
